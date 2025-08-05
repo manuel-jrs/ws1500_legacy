@@ -1,0 +1,5 @@
+{
+  "name": "Ambient Weather WS1500 Legacy",
+  "homeassistant": "2023.0.0",
+  "render_readme": true
+}

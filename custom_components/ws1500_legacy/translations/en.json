@@ -1,0 +1,4 @@
+{
+  "component.ws1500_legacy.title": "Ambient Weather WS1500 Legacy",
+  "component.ws1500_legacy.description": "Local integration for legacy Ambient Weather devices."
+}
