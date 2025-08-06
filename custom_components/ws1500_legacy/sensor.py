@@ -70,8 +70,8 @@ class WS1500LegacySensor(SensorEntity):
     def __init__(self, resource, scan_interval, name, unique_id, regex, unit, device_class, state_class, icon):
         self._resource = resource
         self._scan_interval = scan_interval
-        # Use only the English name, translations will be applied automatically
-        self._attr_name = name
+        # Use clean name with WS1500 prefix for entity_id generation
+        self._attr_name = f"WS1500 {name}"
         self._attr_unique_id = f"ws1500_legacy_{unique_id}"
         self._regex = regex
         self._attr_unit_of_measurement = unit

@@ -1,7 +1,7 @@
 {
   "domain": "ws1500_legacy",
   "name": "Ambient Weather WS1500 Legacy",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "documentation": "https://github.com/manuel-jrs/ws1500_legacy",
   "requirements": ["requests"],
   "dependencies": [],

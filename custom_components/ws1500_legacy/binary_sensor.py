@@ -28,7 +28,7 @@ class WS1500LegacyConnectivitySensor(BinarySensorEntity):
     def __init__(self, resource, scan_interval):
         self._resource = resource
         self._scan_interval = scan_interval
-        self._attr_name = "Connectivity"
+        self._attr_name = "WS1500 Connectivity"
         self._attr_unique_id = "ws1500_legacy_connectivity"
         self._attr_device_class = BinarySensorDeviceClass.CONNECTIVITY
         self._attr_icon = "mdi:wifi"
