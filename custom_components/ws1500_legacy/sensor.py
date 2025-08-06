@@ -84,15 +84,15 @@ class WS1500LegacySensor(SensorEntity):
         try:
             host = self._resource.replace("http://", "").replace("/livedata.htm", "")
             
-            if self._unique_id == "ws1500_legacy_device_ip":
+            if self._attr_unique_id == "ws1500_legacy_device_ip":
                 # Show device IP
                 self._state = host
                 
-            elif self._unique_id == "ws1500_legacy_last_update":
+            elif self._attr_unique_id == "ws1500_legacy_last_update":
                 # Show last successful update time
                 self._state = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                 
-            elif self._unique_id in ["ws1500_legacy_timezone", "ws1500_legacy_dst", 
+            elif self._attr_unique_id in ["ws1500_legacy_timezone", "ws1500_legacy_dst", 
                                    "ws1500_legacy_wind_unit", "ws1500_legacy_rain_unit", 
                                    "ws1500_legacy_pressure_unit", "ws1500_legacy_temp_unit", 
                                    "ws1500_legacy_solar_unit"]:
@@ -100,7 +100,7 @@ class WS1500LegacySensor(SensorEntity):
                 station_url = f"http://{host}/station.htm"
                 response = requests.get(station_url, timeout=10)
                 if response.status_code == 200:
-                    if self._unique_id == "ws1500_legacy_timezone":
+                    if self._attr_unique_id == "ws1500_legacy_timezone":
                         timezone_match = re.search(r'name="timezone"[^>]*value="([-0-9\.]+)"', response.text)
                         if timezone_match:
                             timezone_value = float(timezone_match.group(1))
@@ -108,48 +108,48 @@ class WS1500LegacySensor(SensorEntity):
                         else:
                             self._state = "unknown"
                             
-                    elif self._unique_id == "ws1500_legacy_dst":
-                        dst_match = re.search(r'name="dst".*?<option value="(\d+)" selected=""', response.text, re.DOTALL)
+                    elif self._attr_unique_id == "ws1500_legacy_dst":
+                        dst_match = re.search(r'name="dst".*?<option value="(\d+)"[^>]*selected', response.text, re.DOTALL)
                         if dst_match:
                             dst_value = int(dst_match.group(1))
                             self._state = "on" if dst_value == 1 else "off"
                         else:
                             self._state = "unknown"
                             
-                    elif self._unique_id == "ws1500_legacy_wind_unit":
-                        wind_match = re.search(r'name="unit_Wind".*?<option value="(\d+)" selected=""', response.text, re.DOTALL)
+                    elif self._attr_unique_id == "ws1500_legacy_wind_unit":
+                        wind_match = re.search(r'name="unit_Wind".*?<option value="(\d+)"[^>]*selected', response.text, re.DOTALL)
                         if wind_match:
                             unit_value = int(wind_match.group(1))
                             self._state = WIND_UNITS.get(unit_value, "unknown")
                         else:
                             self._state = "unknown"
                             
-                    elif self._unique_id == "ws1500_legacy_rain_unit":
-                        rain_match = re.search(r'name="u_Rainfall".*?<option value="(\d+)" selected=""', response.text, re.DOTALL)
+                    elif self._attr_unique_id == "ws1500_legacy_rain_unit":
+                        rain_match = re.search(r'name="u_Rainfall".*?<option value="(\d+)"[^>]*selected', response.text, re.DOTALL)
                         if rain_match:
                             unit_value = int(rain_match.group(1))
                             self._state = RAIN_UNITS.get(unit_value, "unknown")
                         else:
                             self._state = "unknown"
                             
-                    elif self._unique_id == "ws1500_legacy_pressure_unit":
-                        pressure_match = re.search(r'name="unit_Pressure".*?<option value="(\d+)" selected=""', response.text, re.DOTALL)
+                    elif self._attr_unique_id == "ws1500_legacy_pressure_unit":
+                        pressure_match = re.search(r'name="unit_Pressure".*?<option value="(\d+)"[^>]*selected', response.text, re.DOTALL)
                         if pressure_match:
                             unit_value = int(pressure_match.group(1))
                             self._state = PRESSURE_UNITS.get(unit_value, "unknown")
                         else:
                             self._state = "unknown"
                             
-                    elif self._unique_id == "ws1500_legacy_temp_unit":
-                        temp_match = re.search(r'name="u_Temperature".*?<option value="(\d+)" selected=""', response.text, re.DOTALL)
+                    elif self._attr_unique_id == "ws1500_legacy_temp_unit":
+                        temp_match = re.search(r'name="u_Temperature".*?<option value="(\d+)"[^>]*selected', response.text, re.DOTALL)
                         if temp_match:
                             unit_value = int(temp_match.group(1))
                             self._state = TEMP_UNITS.get(unit_value, "unknown")
                         else:
                             self._state = "unknown"
                             
-                    elif self._unique_id == "ws1500_legacy_solar_unit":
-                        solar_match = re.search(r'name="unit_Solar".*?<option value="(\d+)" selected=""', response.text, re.DOTALL)
+                    elif self._attr_unique_id == "ws1500_legacy_solar_unit":
+                        solar_match = re.search(r'name="unit_Solar".*?<option value="(\d+)"[^>]*selected', response.text, re.DOTALL)
                         if solar_match:
                             unit_value = int(solar_match.group(1))
                             self._state = SOLAR_UNITS.get(unit_value, "unknown")
