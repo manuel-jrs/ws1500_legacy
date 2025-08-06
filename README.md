@@ -8,6 +8,8 @@ This custom component allows you to use legacy Ambient Weather WS1500 devices lo
 - Binary sensor for device connectivity status
 - Information sensors showing device configuration and units
 - Device classes and state classes for best dashboard integration
+- **Automatic unit conversion based on Home Assistant preferences**
+- **Smart unit management**: Uses your HA metric/imperial setting for display
 
 ## Installation
 ### Via HACS (Recommended)
@@ -32,16 +34,17 @@ sensor:
 ## Available Sensors
 
 ### Weather Sensors
-All sensors include appropriate device classes and state classes for proper dashboard integration:
-- **Temperature**: Indoor and outdoor temperature
-- **Humidity**: Indoor and outdoor humidity levels  
-- **Wind**: Wind speed, gust speed, and direction
-- **Rain**: Rainfall rate and total accumulation
+All sensors include appropriate device classes and state classes for proper dashboard integration. **Units are automatically converted to match your Home Assistant metric/imperial preference:**
+
+- **Temperature**: Indoor and outdoor temperature (°C/°F based on HA settings)
+- **Humidity**: Indoor and outdoor humidity levels (always %)
+- **Wind**: Wind speed, gust speed, and direction (km/h or mph based on HA settings)
+- **Rain**: Rainfall rate and total accumulation (mm or inches based on HA settings)
 - **Pressure**: Absolute and relative barometric pressure
-- **Solar**: Solar radiation measurement
+- **Solar**: Solar radiation measurement (W/m²)
 - **UV**: UV index
-- **Dew Point**: Dew point temperature
-- **Wind Chill**: Wind chill temperature
+- **Dew Point**: Dew point temperature (°C/°F based on HA settings)
+- **Wind Chill**: Wind chill temperature (°C/°F based on HA settings)
 
 ### System Sensors  
 - **Device Status**: Binary sensor indicating if the weather station is online/reachable
@@ -57,6 +60,18 @@ All sensors include appropriate device classes and state classes for proper dash
   - **Solar Unit**: W/m², lux, or fc
 
 ## Technical Details
+
+### Unit Conversion System
+This integration now includes intelligent unit conversion:
+
+1. **Device Units**: Reads the current unit settings from your WS1500 device
+2. **Native Units**: Converts device readings to standard SI units internally
+3. **Display Units**: Automatically converts to metric/imperial based on your HA configuration
+4. **Supported Conversions**:
+   - Temperature: °C ↔ °F
+   - Wind Speed: m/s, km/h, mph, knots, ft/s, Beaufort scale
+   - Precipitation: mm ↔ inches
+   - All conversions use Home Assistant's built-in converters for accuracy
 
 ### Device Endpoints
 This integration accesses the following URLs on your WS1500 device:
