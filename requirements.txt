@@ -1,0 +1,2 @@
+# Requirements for WS1500 Legacy integration
+aiohttp>=3.8.0

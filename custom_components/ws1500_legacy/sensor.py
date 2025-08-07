@@ -1,8 +1,6 @@
 """Support for WS1500 Legacy Weather Station sensors."""
 
 import logging
-import re
-import requests
 from datetime import datetime
 
 from homeassistant.components.sensor import (
@@ -18,34 +16,15 @@ from homeassistant.const import (
     UnitOfSpeed,
     UnitOfTemperature,
 )
+from homeassistant.helpers.entity import EntityCategory
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
+from homeassistant.helpers.update_coordinator import CoordinatorEntity
+
+from .const import DOMAIN, DEFAULT_SCAN_INTERVAL
+from .coordinator import WS1500LegacyCoordinator
 
 _LOGGER = logging.getLogger(__name__)
-
-# Sensor data mapping - key to regex pattern
-SENSOR_DATA_MAPPING = {
-    "wind_direction": 'name="windir"[^>]*value="([0-9]+)"',
-    "wind_speed": 'name="avgwind"[^>]*value="([-0-9\\.]+)"',
-    "wind_gust": 'name="gustspeed"[^>]*value="([-0-9\\.]+)"',
-    "max_daily_gust": 'name="dailygust"[^>]*value="([-0-9\\.]+)"',
-    "out_temp": 'name="outTemp"[^>]*value="([-0-9\\.]+)"',
-    "out_humidity": 'name="outHumi"[^>]*value="([0-9]+)"',
-    "solar_rad": 'name="solarrad"[^>]*value="([-0-9\\.]+)"',
-    "uvi": 'name="uvi"[^>]*value="([0-9]+)"',
-    "hourly_rain": 'name="rainofhourly"[^>]*value="([-0-9\\.]+)"',
-    "daily_rain": 'name="rainofdaily"[^>]*value="([-0-9\\.]+)"',
-    "weekly_rain": 'name="rainofweekly"[^>]*value="([-0-9\\.]+)"',
-    "monthly_rain": 'name="rainofmonthly"[^>]*value="([-0-9\\.]+)"',
-    "yearly_rain": 'name="rainofyearly"[^>]*value="([-0-9\\.]+)"',
-}
-
-# Unit mappings from device settings
-WIND_UNITS = {0: "m/s", 1: "km/h", 2: "ft/s", 3: "bft", 4: "mph", 5: "knot"}
-RAIN_UNITS = {0: "mm", 1: "in"}
-PRESSURE_UNITS = {0: "hPa", 1: "inHg", 2: "mmHg"}
-TEMP_UNITS = {0: "°C", 1: "°F"}
-SOLAR_UNITS = {0: "lux", 1: "W/m²", 2: "fc"}
 
 # Weather sensor descriptions following Home Assistant standards
 SENSOR_DESCRIPTIONS = (
@@ -160,46 +139,55 @@ INFO_SENSOR_DESCRIPTIONS = (
         key="timezone",
         name="Time Zone",
         icon="mdi:clock-outline",
+        entity_category=EntityCategory.DIAGNOSTIC,
     ),
     SensorEntityDescription(
         key="dst",
         name="Daylight Saving",
         icon="mdi:weather-sunset",
+        entity_category=EntityCategory.DIAGNOSTIC,
     ),
     SensorEntityDescription(
         key="device_ip",
         name="Device IP",
         icon="mdi:ip-network",
+        entity_category=EntityCategory.DIAGNOSTIC,
     ),
     SensorEntityDescription(
         key="wind_unit",
         name="Wind Unit",
         icon="mdi:weather-windy",
+        entity_category=EntityCategory.DIAGNOSTIC,
     ),
     SensorEntityDescription(
         key="rain_unit",
         name="Rain Unit",
         icon="mdi:weather-rainy",
+        entity_category=EntityCategory.DIAGNOSTIC,
     ),
     SensorEntityDescription(
         key="pressure_unit",
         name="Pressure Unit",
         icon="mdi:gauge",
+        entity_category=EntityCategory.DIAGNOSTIC,
     ),
     SensorEntityDescription(
         key="temp_unit",
         name="Temperature Unit",
         icon="mdi:thermometer",
+        entity_category=EntityCategory.DIAGNOSTIC,
     ),
     SensorEntityDescription(
         key="solar_unit",
         name="Solar Unit",
         icon="mdi:solar-power",
+        entity_category=EntityCategory.DIAGNOSTIC,
     ),
     SensorEntityDescription(
         key="last_update",
         name="Last Update",
         icon="mdi:clock-check",
+        entity_category=EntityCategory.DIAGNOSTIC,
     ),
 )
 
@@ -207,199 +195,85 @@ INFO_SENSOR_DESCRIPTIONS = (
 async def async_setup_platform(hass, config, async_add_entities, discovery_info=None):
     """Set up WS1500 Legacy platform via YAML."""
     host = config.get(CONF_HOST)
-    scan_interval = config.get(CONF_SCAN_INTERVAL, 60)
-    resource = f"http://{host}/livedata.htm"
+    scan_interval = config.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL)
+    
+    # Create coordinator for YAML setup
+    coordinator = WS1500LegacyCoordinator(hass, host, scan_interval)
+    await coordinator.async_config_entry_first_refresh()
 
     sensors = []
     # Add weather data sensors
     for description in SENSOR_DESCRIPTIONS:
-        sensors.append(WS1500LegacySensor(resource, scan_interval, description))
+        sensors.append(WS1500LegacySensor(coordinator, description))
 
     # Add info sensors
     for description in INFO_SENSOR_DESCRIPTIONS:
-        sensors.append(WS1500LegacyInfoSensor(resource, scan_interval, description))
+        sensors.append(WS1500LegacyInfoSensor(coordinator, description))
 
     async_add_entities(sensors)
 
 
 async def async_setup_entry(hass, config_entry, async_add_entities):
     """Set up WS1500 Legacy platform via UI."""
-    host = config_entry.data[CONF_HOST]
-    scan_interval = config_entry.data.get(CONF_SCAN_INTERVAL, 60)
-    resource = f"http://{host}/livedata.htm"
+    coordinator = hass.data[DOMAIN][config_entry.entry_id]
 
     sensors = []
     # Add weather data sensors
     for description in SENSOR_DESCRIPTIONS:
-        sensors.append(WS1500LegacySensor(resource, scan_interval, description))
+        sensors.append(WS1500LegacySensor(coordinator, description))
 
     # Add info sensors
     for description in INFO_SENSOR_DESCRIPTIONS:
-        sensors.append(WS1500LegacyInfoSensor(resource, scan_interval, description))
+        sensors.append(WS1500LegacyInfoSensor(coordinator, description))
 
     async_add_entities(sensors)
 
 
-class WS1500LegacySensor(SensorEntity):
+class WS1500LegacySensor(CoordinatorEntity, SensorEntity):
     """Define a WS1500 weather sensor."""
 
     def __init__(
         self,
-        resource: str,
-        scan_interval: int,
+        coordinator: WS1500LegacyCoordinator,
         description: SensorEntityDescription,
     ) -> None:
         """Initialize the sensor."""
-        self._resource = resource
-        self._scan_interval = scan_interval
+        super().__init__(coordinator)
         self.entity_description = description
         self._attr_name = f"WS1500 {description.name}"
         self._attr_unique_id = f"ws1500_legacy_{description.key}"
-        self._attr_native_value = None
 
-    def update(self):
-        """Update the sensor value."""
-        try:
-            response = requests.get(self._resource, timeout=10)
-            if response.status_code == 200:
-                regex_pattern = SENSOR_DATA_MAPPING[self.entity_description.key]
-                match = re.search(regex_pattern, response.text)
-                if match:
-                    raw_value = match.group(1)
-                    # Convert to float if possible, otherwise keep as string
-                    try:
-                        self._attr_native_value = float(raw_value)
-                    except ValueError:
-                        self._attr_native_value = raw_value
-                else:
-                    self._attr_native_value = 0
-            else:
-                self._attr_native_value = None
-        except Exception as e:
-            _LOGGER.error(f"Error updating WS1500 sensor {self.entity_description.key}: {e}")
-            self._attr_native_value = None
+    @property
+    def native_value(self):
+        """Return the native value of the sensor."""
+        return self.coordinator.data["sensors"].get(self.entity_description.key)
+
+    @property
+    def device_info(self):
+        """Return device information."""
+        return self.coordinator.get_device_info()
 
 
-class WS1500LegacyInfoSensor(SensorEntity):
+class WS1500LegacyInfoSensor(CoordinatorEntity, SensorEntity):
     """Define a WS1500 info sensor."""
 
     def __init__(
         self,
-        resource: str,
-        scan_interval: int,
+        coordinator: WS1500LegacyCoordinator,
         description: SensorEntityDescription,
     ) -> None:
         """Initialize the sensor."""
-        self._resource = resource
-        self._scan_interval = scan_interval
+        super().__init__(coordinator)
         self.entity_description = description
         self._attr_name = f"WS1500 {description.name}"
         self._attr_unique_id = f"ws1500_legacy_{description.key}"
-        self._attr_native_value = None
 
-    def update(self):
-        """Update the sensor value."""
-        try:
-            host = self._resource.replace("http://", "").replace("/livedata.htm", "")
+    @property
+    def native_value(self):
+        """Return the native value of the sensor."""
+        return self.coordinator.data["info"].get(self.entity_description.key)
 
-            if self.entity_description.key == "device_ip":
-                self._attr_native_value = host
-
-            elif self.entity_description.key == "last_update":
-                self._attr_native_value = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-
-            elif self.entity_description.key in [
-                "timezone", "dst", "wind_unit", "rain_unit",
-                "pressure_unit", "temp_unit", "solar_unit"
-            ]:
-                # Read device settings from station.htm
-                station_url = f"http://{host}/station.htm"
-                response = requests.get(station_url, timeout=10)
-                if response.status_code == 200:
-                    if self.entity_description.key == "timezone":
-                        timezone_match = re.search(
-                            r'name="timezone"[^>]*value="([-0-9\.]+)"', response.text
-                        )
-                        if timezone_match:
-                            timezone_value = float(timezone_match.group(1))
-                            self._attr_native_value = f"UTC{timezone_value:+g}"
-                        else:
-                            self._attr_native_value = "unknown"
-
-                    elif self.entity_description.key == "dst":
-                        dst_match = re.search(
-                            r'name="dst".*?<option value="(\d+)"[^>]*selected',
-                            response.text,
-                            re.DOTALL,
-                        )
-                        if dst_match:
-                            dst_value = int(dst_match.group(1))
-                            self._attr_native_value = "on" if dst_value == 1 else "off"
-                        else:
-                            self._attr_native_value = "unknown"
-
-                    elif self.entity_description.key == "wind_unit":
-                        wind_match = re.search(
-                            r'name="unit_Wind".*?<option value="(\d+)"[^>]*selected',
-                            response.text,
-                            re.DOTALL,
-                        )
-                        if wind_match:
-                            unit_value = int(wind_match.group(1))
-                            self._attr_native_value = WIND_UNITS.get(unit_value, "unknown")
-                        else:
-                            self._attr_native_value = "unknown"
-
-                    elif self.entity_description.key == "rain_unit":
-                        rain_match = re.search(
-                            r'name="u_Rainfall".*?<option value="(\d+)"[^>]*selected',
-                            response.text,
-                            re.DOTALL,
-                        )
-                        if rain_match:
-                            unit_value = int(rain_match.group(1))
-                            self._attr_native_value = RAIN_UNITS.get(unit_value, "unknown")
-                        else:
-                            self._attr_native_value = "unknown"
-
-                    elif self.entity_description.key == "pressure_unit":
-                        pressure_match = re.search(
-                            r'name="unit_Pressure".*?<option value="(\d+)"[^>]*selected',
-                            response.text,
-                            re.DOTALL,
-                        )
-                        if pressure_match:
-                            unit_value = int(pressure_match.group(1))
-                            self._attr_native_value = PRESSURE_UNITS.get(unit_value, "unknown")
-                        else:
-                            self._attr_native_value = "unknown"
-
-                    elif self.entity_description.key == "temp_unit":
-                        temp_match = re.search(
-                            r'name="u_Temperature".*?<option value="(\d+)"[^>]*selected',
-                            response.text,
-                            re.DOTALL,
-                        )
-                        if temp_match:
-                            unit_value = int(temp_match.group(1))
-                            self._attr_native_value = TEMP_UNITS.get(unit_value, "unknown")
-                        else:
-                            self._attr_native_value = "unknown"
-
-                    elif self.entity_description.key == "solar_unit":
-                        solar_match = re.search(
-                            r'name="unit_Solar".*?<option value="(\d+)"[^>]*selected',
-                            response.text,
-                            re.DOTALL,
-                        )
-                        if solar_match:
-                            unit_value = int(solar_match.group(1))
-                            self._attr_native_value = SOLAR_UNITS.get(unit_value, "unknown")
-                        else:
-                            self._attr_native_value = "unknown"
-                else:
-                    self._attr_native_value = "unknown"
-
-        except Exception as e:
-            _LOGGER.error(f"Error updating WS1500 info sensor {self.entity_description.key}: {e}")
-            self._attr_native_value = "unknown"
+    @property
+    def device_info(self):
+        """Return device information."""
+        return self.coordinator.get_device_info()

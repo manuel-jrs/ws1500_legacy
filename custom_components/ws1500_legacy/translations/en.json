@@ -4,6 +4,9 @@
   "config.step.user.description": "Enter only the IP address. The final URL will be: {url_example}",
   "config.step.user.data.host": "Device IP address",
   "config.step.user.data.scan_interval": "Update interval (10-3600 seconds)",
+  "options.step.init.title": "WS1500 Legacy Options",
+  "options.step.init.description": "Configure options for the WS1500 Legacy integration",
+  "options.step.init.data.scan_interval": "Update interval (10-3600 seconds)",
   "entity.sensor.ws1500_legacy_wind_direction.name": "Wind Direction",
   "entity.sensor.ws1500_legacy_wind_speed.name": "Wind Speed",
   "entity.sensor.ws1500_legacy_wind_gust.name": "Wind Gust",
@@ -26,5 +29,6 @@
   "entity.sensor.ws1500_legacy_temp_unit.name": "Temperature Unit",
   "entity.sensor.ws1500_legacy_solar_unit.name": "Solar Unit",
   "entity.sensor.ws1500_legacy_last_update.name": "Last Update",
-  "entity.binary_sensor.ws1500_legacy_connectivity.name": "Connectivity"
+  "entity.binary_sensor.ws1500_legacy_connectivity.name": "Connectivity",
+  "entity.button.ws1500_legacy_reboot.name": "Reboot"
 }
