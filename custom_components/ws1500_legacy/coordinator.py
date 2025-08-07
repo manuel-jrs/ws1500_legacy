@@ -15,6 +15,7 @@ from .const import (
     DATA_CACHE_DURATION,
     DEFAULT_TIMEOUT,
     DOMAIN,
+    INFO_SENSOR_MAPPING,
     LIVEDATA_ENDPOINT,
     PRESSURE_UNIT_PATTERN,
     PRESSURE_UNITS,
@@ -28,6 +29,7 @@ from .const import (
     TEMP_UNITS,
     TIMEZONE_PATTERN,
     DST_PATTERN,
+    UNAVAILABLE_VALUES,
     WIND_UNIT_PATTERN,
     WIND_UNITS,
 )
@@ -52,6 +54,10 @@ class WS1500LegacyCoordinator(DataUpdateCoordinator):
         self._compiled_patterns = {
             key: re.compile(pattern) 
             for key, pattern in SENSOR_DATA_MAPPING.items()
+        }
+        self._info_patterns = {
+            key: re.compile(pattern) 
+            for key, pattern in INFO_SENSOR_MAPPING.items()
         }
         self._station_patterns = {
             "timezone": re.compile(TIMEZONE_PATTERN),
@@ -82,13 +88,15 @@ class WS1500LegacyCoordinator(DataUpdateCoordinator):
                 # Fetch station settings (cached for performance)
                 station_data = await self._fetch_station_data(session)
                 
-                # Add derived data
+                # Add derived data - merge sensor info with station info
                 info_data = {
                     "device_ip": self.host,
                     "last_update": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
                     **station_data,
                 }
                 
+                # Add info sensors from livedata to sensor_data
+                # These will be accessible through the sensors data structure
                 return {
                     "sensors": sensor_data,
                     "info": info_data,
@@ -110,11 +118,28 @@ class WS1500LegacyCoordinator(DataUpdateCoordinator):
                     if match:
                         raw_value = match.group(1)
                         try:
-                            sensor_data[key] = float(raw_value)
+                            # Skip conversion for values indicating no sensor installed
+                            if raw_value in UNAVAILABLE_VALUES:
+                                sensor_data[key] = None
+                            else:
+                                sensor_data[key] = float(raw_value)
                         except ValueError:
                             sensor_data[key] = raw_value
                     else:
-                        sensor_data[key] = 0
+                        sensor_data[key] = None
+                
+                # Also extract info sensors from livedata
+                for key, pattern in self._info_patterns.items():
+                    match = pattern.search(content)
+                    if match:
+                        value = match.group(1)
+                        # Filter out placeholder values for info sensors
+                        if value in UNAVAILABLE_VALUES:
+                            sensor_data[key] = None
+                        else:
+                            sensor_data[key] = value
+                    else:
+                        sensor_data[key] = None
                 
                 return sensor_data
                 

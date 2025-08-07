@@ -15,6 +15,7 @@ from homeassistant.const import (
     PERCENTAGE,
     UnitOfSpeed,
     UnitOfTemperature,
+    UnitOfPressure,
 )
 from homeassistant.helpers.entity import EntityCategory
 from homeassistant.core import HomeAssistant
@@ -77,6 +78,38 @@ SENSOR_DESCRIPTIONS = (
         icon="mdi:water-percent",
     ),
     SensorEntityDescription(
+        key="in_temp",
+        name="Indoor Temperature",
+        native_unit_of_measurement=UnitOfTemperature.CELSIUS,
+        device_class=SensorDeviceClass.TEMPERATURE,
+        state_class=SensorStateClass.MEASUREMENT,
+        icon="mdi:thermometer",
+    ),
+    SensorEntityDescription(
+        key="in_humidity",
+        name="Indoor Humidity",
+        native_unit_of_measurement=PERCENTAGE,
+        device_class=SensorDeviceClass.HUMIDITY,
+        state_class=SensorStateClass.MEASUREMENT,
+        icon="mdi:water-percent",
+    ),
+    SensorEntityDescription(
+        key="abs_pressure",
+        name="Absolute Pressure",
+        native_unit_of_measurement=UnitOfPressure.HPA,
+        device_class=SensorDeviceClass.ATMOSPHERIC_PRESSURE,
+        state_class=SensorStateClass.MEASUREMENT,
+        icon="mdi:gauge",
+    ),
+    SensorEntityDescription(
+        key="rel_pressure",
+        name="Relative Pressure",
+        native_unit_of_measurement=UnitOfPressure.HPA,
+        device_class=SensorDeviceClass.ATMOSPHERIC_PRESSURE,
+        state_class=SensorStateClass.MEASUREMENT,
+        icon="mdi:gauge",
+    ),
+    SensorEntityDescription(
         key="solar_rad",
         name="Solar Radiation",
         native_unit_of_measurement="W/m²",
@@ -94,9 +127,17 @@ SENSOR_DESCRIPTIONS = (
     SensorEntityDescription(
         key="hourly_rain",
         name="Hourly Rain",
-        native_unit_of_measurement="mm",
+        native_unit_of_measurement="mm/h",
         device_class=SensorDeviceClass.PRECIPITATION_INTENSITY,
         state_class=SensorStateClass.MEASUREMENT,
+        icon="mdi:weather-rainy",
+    ),
+    SensorEntityDescription(
+        key="event_rain",
+        name="Event Rain",
+        native_unit_of_measurement="mm",
+        device_class=SensorDeviceClass.PRECIPITATION,
+        state_class=SensorStateClass.TOTAL_INCREASING,
         icon="mdi:weather-rainy",
     ),
     SensorEntityDescription(
@@ -130,6 +171,22 @@ SENSOR_DESCRIPTIONS = (
         device_class=SensorDeviceClass.PRECIPITATION,
         state_class=SensorStateClass.TOTAL_INCREASING,
         icon="mdi:weather-rainy",
+    ),
+    SensorEntityDescription(
+        key="pm25_indoor",
+        name="PM2.5 Indoor",
+        native_unit_of_measurement="µg/m³",
+        device_class=SensorDeviceClass.PM25,
+        state_class=SensorStateClass.MEASUREMENT,
+        icon="mdi:air-filter",
+    ),
+    SensorEntityDescription(
+        key="pm25_outdoor",
+        name="PM2.5 Outdoor",
+        native_unit_of_measurement="µg/m³",
+        device_class=SensorDeviceClass.PM25,
+        state_class=SensorStateClass.MEASUREMENT,
+        icon="mdi:air-filter",
     ),
 )
 
@@ -189,6 +246,24 @@ INFO_SENSOR_DESCRIPTIONS = (
         icon="mdi:clock-check",
         entity_category=EntityCategory.DIAGNOSTIC,
     ),
+    SensorEntityDescription(
+        key="outdoor1_id",
+        name="Outdoor Sensor ID",
+        icon="mdi:identifier",
+        entity_category=EntityCategory.DIAGNOSTIC,
+    ),
+    SensorEntityDescription(
+        key="outdoor1_battery",
+        name="Outdoor Sensor Battery",
+        icon="mdi:battery",
+        entity_category=EntityCategory.DIAGNOSTIC,
+    ),
+    SensorEntityDescription(
+        key="current_time",
+        name="Receiver Time",
+        icon="mdi:clock",
+        entity_category=EntityCategory.DIAGNOSTIC,
+    ),
 )
 
 
@@ -244,6 +319,13 @@ class WS1500LegacySensor(CoordinatorEntity, SensorEntity):
         self._attr_unique_id = f"ws1500_legacy_{description.key}"
 
     @property
+    def available(self):
+        """Return True if entity is available."""
+        # Entity is available if it has a non-None value
+        value = self.native_value
+        return value is not None
+
+    @property
     def native_value(self):
         """Return the native value of the sensor."""
         return self.coordinator.data["sensors"].get(self.entity_description.key)
@@ -269,8 +351,20 @@ class WS1500LegacyInfoSensor(CoordinatorEntity, SensorEntity):
         self._attr_unique_id = f"ws1500_legacy_{description.key}"
 
     @property
+    def available(self):
+        """Return True if entity is available."""
+        # Entity is available if it has a non-None value
+        value = self.native_value
+        return value is not None
+
+    @property
     def native_value(self):
         """Return the native value of the sensor."""
+        # Check if this sensor is in the sensors data (including info sensors from livedata)
+        value = self.coordinator.data["sensors"].get(self.entity_description.key)
+        if value is not None:
+            return value
+        # If not found in sensors, check in info data
         return self.coordinator.data["info"].get(self.entity_description.key)
 
     @property
