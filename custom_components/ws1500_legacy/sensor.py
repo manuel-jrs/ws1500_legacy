@@ -34,7 +34,7 @@ SENSOR_DESCRIPTIONS = (
         name="Wind Direction",
         native_unit_of_measurement="°",
         device_class=SensorDeviceClass.WIND_DIRECTION,
-        state_class=SensorStateClass.MEASUREMENT,
+        state_class=SensorStateClass.MEASUREMENT_ANGLE,
         icon="mdi:compass-outline",
     ),
     SensorEntityDescription(
@@ -58,7 +58,7 @@ SENSOR_DESCRIPTIONS = (
         name="Max Daily Gust",
         native_unit_of_measurement=UnitOfSpeed.KILOMETERS_PER_HOUR,
         device_class=SensorDeviceClass.WIND_SPEED,
-        state_class=SensorStateClass.TOTAL_INCREASING,
+        state_class=SensorStateClass.MEASUREMENT,
         icon="mdi:weather-windy-variant",
     ),
     SensorEntityDescription(
