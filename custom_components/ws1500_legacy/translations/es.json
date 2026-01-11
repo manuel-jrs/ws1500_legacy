@@ -1,34 +1,75 @@
 {
-  "component.ws1500_legacy.title": "Ambient Weather WS1500 Legacy",
-  "component.ws1500_legacy.description": "Integración local para dispositivos Ambient Weather legacy.",
-  "config.step.user.description": "Introduce solo la IP. La URL final será: {url_example}",
-  "config.step.user.data.host": "Dirección IP del dispositivo",
-  "config.step.user.data.scan_interval": "Intervalo de actualización (10-3600 segundos)",
-  "options.step.init.title": "Opciones WS1500 Legacy",
-  "options.step.init.description": "Configurar opciones para la integración WS1500 Legacy",
-  "options.step.init.data.scan_interval": "Intervalo de actualización (10-3600 segundos)",
-  "entity.sensor.ws1500_legacy_wind_direction.name": "Dirección del Viento",
-  "entity.sensor.ws1500_legacy_wind_speed.name": "Velocidad del Viento",
-  "entity.sensor.ws1500_legacy_wind_gust.name": "Ráfaga de Viento",
-  "entity.sensor.ws1500_legacy_max_daily_gust.name": "Máx. Ráfaga Diaria",
-  "entity.sensor.ws1500_legacy_out_temp.name": "Temperatura Exterior",
-  "entity.sensor.ws1500_legacy_out_humidity.name": "Humedad Exterior",
-  "entity.sensor.ws1500_legacy_solar_rad.name": "Radiación Solar",
-  "entity.sensor.ws1500_legacy_uvi.name": "Índice UVI",
-  "entity.sensor.ws1500_legacy_hourly_rain.name": "Lluvia por Hora",
-  "entity.sensor.ws1500_legacy_daily_rain.name": "Lluvia Diaria",
-  "entity.sensor.ws1500_legacy_weekly_rain.name": "Lluvia Semanal",
-  "entity.sensor.ws1500_legacy_monthly_rain.name": "Lluvia Mensual",
-  "entity.sensor.ws1500_legacy_yearly_rain.name": "Lluvia Anual",
-  "entity.sensor.ws1500_legacy_timezone.name": "Zona Horaria",
-  "entity.sensor.ws1500_legacy_dst.name": "Horario de Verano",
-  "entity.sensor.ws1500_legacy_device_ip.name": "IP del Dispositivo",
-  "entity.sensor.ws1500_legacy_wind_unit.name": "Unidad de Viento",
-  "entity.sensor.ws1500_legacy_rain_unit.name": "Unidad de Lluvia",
-  "entity.sensor.ws1500_legacy_pressure_unit.name": "Unidad de Presión",
-  "entity.sensor.ws1500_legacy_temp_unit.name": "Unidad de Temperatura",
-  "entity.sensor.ws1500_legacy_solar_unit.name": "Unidad Solar",
-  "entity.sensor.ws1500_legacy_last_update.name": "Última Actualización",
-  "entity.binary_sensor.ws1500_legacy_connectivity.name": "Conectividad",
-  "entity.button.ws1500_legacy_reboot.name": "Reiniciar"
+  "config": {
+    "step": {
+      "user": {
+        "description": "Introduce solo la IP. La URL final será: {url_example}",
+        "data": {
+          "host": "Dirección IP del dispositivo",
+          "scan_interval": "Intervalo de actualización (10-3600 segundos)"
+        }
+      }
+    },
+    "error": {
+      "invalid_host": "Dirección IP o nombre de host inválido",
+      "cannot_connect": "No se puede conectar al dispositivo. Verifica la IP y que el dispositivo esté encendido.",
+      "timeout": "Tiempo de conexión agotado. El dispositivo puede estar apagado o inaccesible.",
+      "not_ws1500": "Se encontró un dispositivo pero no parece ser una estación WS1500.",
+      "unknown_error": "Ocurrió un error inesperado al conectar con el dispositivo."
+    },
+    "abort": {
+      "already_configured": "Este dispositivo ya está configurado."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Opciones WS1500 Legacy",
+        "description": "Configurar opciones para la integración WS1500 Legacy. Puedes cambiar la IP del dispositivo si ha cambiado.",
+        "data": {
+          "host": "Dirección IP del dispositivo",
+          "scan_interval": "Intervalo de actualización (10-3600 segundos)"
+        }
+      }
+    },
+    "error": {
+      "invalid_host": "Dirección IP o nombre de host inválido",
+      "cannot_connect": "No se puede conectar al dispositivo. Verifica la IP y que el dispositivo esté encendido.",
+      "timeout": "Tiempo de conexión agotado. El dispositivo puede estar apagado o inaccesible.",
+      "not_ws1500": "Se encontró un dispositivo pero no parece ser una estación WS1500.",
+      "unknown_error": "Ocurrió un error inesperado al conectar con el dispositivo."
+    }
+  },
+  "entity": {
+    "sensor": {
+      "wind_direction": {"name": "Dirección del Viento"},
+      "wind_speed": {"name": "Velocidad del Viento"},
+      "wind_gust": {"name": "Ráfaga de Viento"},
+      "max_daily_gust": {"name": "Máx. Ráfaga Diaria"},
+      "out_temp": {"name": "Temperatura Exterior"},
+      "out_humidity": {"name": "Humedad Exterior"},
+      "solar_rad": {"name": "Radiación Solar"},
+      "uvi": {"name": "Índice UVI"},
+      "hourly_rain": {"name": "Lluvia por Hora"},
+      "daily_rain": {"name": "Lluvia Diaria"},
+      "weekly_rain": {"name": "Lluvia Semanal"},
+      "monthly_rain": {"name": "Lluvia Mensual"},
+      "yearly_rain": {"name": "Lluvia Anual"},
+      "timezone": {"name": "Zona Horaria"},
+      "dst": {"name": "Horario de Verano"},
+      "device_ip": {"name": "IP del Dispositivo"},
+      "wind_unit": {"name": "Unidad de Viento"},
+      "rain_unit": {"name": "Unidad de Lluvia"},
+      "pressure_unit": {"name": "Unidad de Presión"},
+      "temp_unit": {"name": "Unidad de Temperatura"},
+      "solar_unit": {"name": "Unidad Solar"},
+      "last_update": {"name": "Última Actualización"},
+      "last_rain_date": {"name": "Fecha de Última Lluvia"}
+    },
+    "binary_sensor": {
+      "connectivity": {"name": "Conectividad"}
+    },
+    "button": {
+      "reboot": {"name": "Reiniciar"}
+    }
+  }
 }

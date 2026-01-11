@@ -1,54 +1,103 @@
+"""Binary sensor platform for WS1500 Legacy integration."""
+
+from __future__ import annotations
+
+import asyncio
 import logging
-from homeassistant.components.binary_sensor import BinarySensorEntity, BinarySensorDeviceClass
+from typing import Any
+
+from homeassistant.components.binary_sensor import (
+    BinarySensorDeviceClass,
+    BinarySensorEntity,
+)
+from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_HOST, CONF_SCAN_INTERVAL
-from homeassistant.helpers.entity import Entity, EntityCategory
+from homeassistant.core import HomeAssistant
+from homeassistant.helpers.entity import EntityCategory
+from homeassistant.helpers.entity_platform import AddEntitiesCallback
+from homeassistant.helpers.typing import ConfigType, DiscoveryInfoType
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
-from .const import DOMAIN, DEFAULT_SCAN_INTERVAL
+from .const import (
+    DEFAULT_SCAN_INTERVAL,
+    DOMAIN,
+    ENTITY_ID_PREFIX,
+    SENSOR_NAME_PREFIX,
+)
 from .coordinator import WS1500LegacyCoordinator
 
 _LOGGER = logging.getLogger(__name__)
 
-async def async_setup_platform(hass, config, async_add_entities, discovery_info=None):
+
+async def async_setup_platform(
+    hass: HomeAssistant,
+    config: ConfigType,
+    async_add_entities: AddEntitiesCallback,
+    discovery_info: DiscoveryInfoType | None = None,
+) -> None:
     """Set up WS1500 Legacy binary sensor platform via YAML."""
-    host = config.get(CONF_HOST)
-    scan_interval = config.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL)
-    
-    # Create coordinator for YAML setup
-    coordinator = WS1500LegacyCoordinator(hass, host, scan_interval)
-    await coordinator.async_config_entry_first_refresh()
-    
-    binary_sensor = WS1500LegacyConnectivitySensor(coordinator)
-    async_add_entities([binary_sensor])
+    host: str = config[CONF_HOST]
+    scan_interval: int = config.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL)
 
-async def async_setup_entry(hass, config_entry, async_add_entities):
+    # Use shared coordinator for YAML setup to avoid duplicates
+    hass.data.setdefault(DOMAIN, {})
+    yaml_key = f"yaml_{host}"
+    lock_key = f"yaml_lock_{host}"
+
+    # Create a lock for this host if it doesn't exist
+    if lock_key not in hass.data[DOMAIN]:
+        hass.data[DOMAIN][lock_key] = asyncio.Lock()
+
+    # Use the lock to prevent race conditions when multiple platforms initialize
+    async with hass.data[DOMAIN][lock_key]:
+        if yaml_key not in hass.data[DOMAIN]:
+            # Create coordinator only if not already created by another platform
+            coordinator = WS1500LegacyCoordinator(hass, host, scan_interval)
+            await coordinator.async_config_entry_first_refresh()
+            hass.data[DOMAIN][yaml_key] = coordinator
+        else:
+            coordinator = hass.data[DOMAIN][yaml_key]
+
+    async_add_entities([WS1500LegacyConnectivitySensor(coordinator)])
+
+
+async def async_setup_entry(
+    hass: HomeAssistant,
+    config_entry: ConfigEntry,
+    async_add_entities: AddEntitiesCallback,
+) -> None:
     """Set up WS1500 Legacy binary sensor platform via UI."""
-    coordinator = hass.data[DOMAIN][config_entry.entry_id]
-    
-    binary_sensor = WS1500LegacyConnectivitySensor(coordinator)
-    async_add_entities([binary_sensor])
+    coordinator: WS1500LegacyCoordinator = hass.data[DOMAIN][config_entry.entry_id]
+    async_add_entities([WS1500LegacyConnectivitySensor(coordinator)])
 
-class WS1500LegacyConnectivitySensor(CoordinatorEntity, BinarySensorEntity):
-    def __init__(self, coordinator: WS1500LegacyCoordinator):
+
+class WS1500LegacyConnectivitySensor(
+    CoordinatorEntity[WS1500LegacyCoordinator],
+    BinarySensorEntity,
+):
+    """Binary sensor representing device connectivity."""
+
+    _attr_device_class = BinarySensorDeviceClass.CONNECTIVITY
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+    _attr_icon = "mdi:wifi"
+
+    def __init__(self, coordinator: WS1500LegacyCoordinator) -> None:
+        """Initialize the connectivity sensor."""
         super().__init__(coordinator)
-        self._attr_name = "WS1500 Connectivity"
-        self._attr_unique_id = "ws1500_legacy_connectivity"
-        self._attr_device_class = BinarySensorDeviceClass.CONNECTIVITY
-        self._attr_icon = "mdi:wifi"
-        self._attr_entity_category = EntityCategory.DIAGNOSTIC
+        self._attr_name = f"{SENSOR_NAME_PREFIX} Connectivity"
+        self._attr_unique_id = f"{ENTITY_ID_PREFIX}_connectivity"
 
     @property
-    def is_on(self):
+    def is_on(self) -> bool:
         """Return True if the device is connected."""
-        # The coordinator handles connectivity by successfully fetching data
         return self.coordinator.last_update_success
 
     @property
-    def available(self):
+    def available(self) -> bool:
         """Return True if entity is available."""
-        return True  # Sensor is always available, even if device doesn't respond
+        return True  # Sensor is always available to report connection status
 
     @property
-    def device_info(self):
+    def device_info(self) -> dict[str, Any]:
         """Return device information."""
         return self.coordinator.get_device_info()

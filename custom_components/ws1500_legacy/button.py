@@ -1,63 +1,75 @@
-import logging
-from homeassistant.components.button import ButtonEntity
-from homeassistant.const import CONF_HOST
-from homeassistant.helpers.entity import Entity
+"""Button platform for WS1500 Legacy integration."""
 
-from .const import DOMAIN
+from __future__ import annotations
+
+import logging
+from typing import Any
+
+from homeassistant.components.button import ButtonDeviceClass, ButtonEntity
+from homeassistant.config_entries import ConfigEntry
+from homeassistant.core import HomeAssistant
+from homeassistant.helpers.entity_platform import AddEntitiesCallback
+
+from .const import DOMAIN, ENTITY_ID_PREFIX, SENSOR_NAME_PREFIX
+from .coordinator import WS1500LegacyCoordinator
 
 _LOGGER = logging.getLogger(__name__)
 
-async def async_setup_entry(hass, config_entry, async_add_entities):
+
+async def async_setup_entry(
+    hass: HomeAssistant,
+    config_entry: ConfigEntry,
+    async_add_entities: AddEntitiesCallback,
+) -> None:
     """Set up WS1500 Legacy button platform via UI."""
-    coordinator = hass.data[DOMAIN][config_entry.entry_id]
-    
-    button = WS1500LegacyRebootButton(coordinator)
-    async_add_entities([button])
+    coordinator: WS1500LegacyCoordinator = hass.data[DOMAIN][config_entry.entry_id]
+    async_add_entities([WS1500LegacyRebootButton(coordinator)])
+
 
 class WS1500LegacyRebootButton(ButtonEntity):
-    def __init__(self, coordinator):
-        self._coordinator = coordinator
-        self._attr_name = "WS1500 Reboot"
-        self._attr_unique_id = "ws1500_legacy_reboot"
-        self._attr_icon = "mdi:restart"
-        self._attr_device_class = "restart"
+    """Button to reboot the WS1500 weather station."""
 
-    async def async_press(self):
+    _attr_device_class = ButtonDeviceClass.RESTART
+    _attr_icon = "mdi:restart"
+
+    def __init__(self, coordinator: WS1500LegacyCoordinator) -> None:
+        """Initialize the reboot button."""
+        self._coordinator = coordinator
+        self._attr_name = f"{SENSOR_NAME_PREFIX} Reboot"
+        self._attr_unique_id = f"{ENTITY_ID_PREFIX}_reboot"
+
+    async def async_press(self) -> None:
         """Handle the button press to reboot the WS1500."""
-        try:
-            _LOGGER.info("Attempting to reboot WS1500 weather station...")
-            
-            success = await self._coordinator.async_reboot_device()
-            
-            if success:
-                # Create a persistent notification
-                await self.hass.services.async_call(
-                    "persistent_notification",
-                    "create",
-                    {
-                        "title": "WS1500 Weather Station",
-                        "message": "Reboot command sent successfully. The weather station should restart in a few moments.",
-                        "notification_id": "ws1500_reboot_success"
-                    }
-                )
-            else:
-                raise Exception("Reboot command failed")
-                
-        except Exception as e:
-            _LOGGER.error(f"Error sending reboot command to WS1500: {e}")
-            # Create error notification
+        _LOGGER.info("Attempting to reboot WS1500 weather station...")
+
+        success = await self._coordinator.async_reboot_device()
+
+        if success:
+            await self.hass.services.async_call(
+                "persistent_notification",
+                "create",
+                {
+                    "title": "WS1500 Weather Station",
+                    "message": (
+                        "Reboot command sent successfully. "
+                        "The weather station should restart in a few moments."
+                    ),
+                    "notification_id": "ws1500_reboot_success",
+                },
+            )
+        else:
             await self.hass.services.async_call(
                 "persistent_notification",
                 "create",
                 {
                     "title": "WS1500 Weather Station Error",
-                    "message": f"Failed to send reboot command: {str(e)}",
-                    "notification_id": "ws1500_reboot_error"
-                }
+                    "message": "Failed to send reboot command. Check the logs for details.",
+                    "notification_id": "ws1500_reboot_error",
+                },
             )
-            raise
+            raise RuntimeError("Reboot command failed")
 
     @property
-    def device_info(self):
+    def device_info(self) -> dict[str, Any]:
         """Return device information."""
         return self._coordinator.get_device_info()

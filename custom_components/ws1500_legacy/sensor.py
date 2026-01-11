@@ -1,14 +1,20 @@
 """Support for WS1500 Legacy Weather Station sensors."""
 
+from __future__ import annotations
+
+import asyncio
 import logging
 from datetime import datetime
+from typing import Any
 
 from homeassistant.components.sensor import (
+    RestoreSensor,
     SensorDeviceClass,
     SensorEntity,
     SensorEntityDescription,
     SensorStateClass,
 )
+from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import (
     CONF_HOST,
     CONF_SCAN_INTERVAL,
@@ -17,12 +23,19 @@ from homeassistant.const import (
     UnitOfTemperature,
     UnitOfPressure,
 )
+from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.entity import EntityCategory
-from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
+from homeassistant.helpers.typing import ConfigType, DiscoveryInfoType
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
+from homeassistant.util import dt as dt_util
 
-from .const import DOMAIN, DEFAULT_SCAN_INTERVAL
+from .const import (
+    DEFAULT_SCAN_INTERVAL,
+    DOMAIN,
+    ENTITY_ID_PREFIX,
+    SENSOR_NAME_PREFIX,
+)
 from .coordinator import WS1500LegacyCoordinator
 
 _LOGGER = logging.getLogger(__name__)
@@ -190,6 +203,16 @@ SENSOR_DESCRIPTIONS = (
     ),
 )
 
+# Smart calculated sensors
+SMART_SENSOR_DESCRIPTIONS = (
+    SensorEntityDescription(
+        key="last_rain_date",
+        name="Last Rain Date",
+        device_class=SensorDeviceClass.TIMESTAMP,
+        icon="mdi:weather-rainy-clock",
+    ),
+)
+
 # Info sensor descriptions (these don't have device classes or state classes)
 INFO_SENSOR_DESCRIPTIONS = (
     SensorEntityDescription(
@@ -267,16 +290,37 @@ INFO_SENSOR_DESCRIPTIONS = (
 )
 
 
-async def async_setup_platform(hass, config, async_add_entities, discovery_info=None):
+async def async_setup_platform(
+    hass: HomeAssistant,
+    config: ConfigType,
+    async_add_entities: AddEntitiesCallback,
+    discovery_info: DiscoveryInfoType | None = None,
+) -> None:
     """Set up WS1500 Legacy platform via YAML."""
-    host = config.get(CONF_HOST)
-    scan_interval = config.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL)
-    
-    # Create coordinator for YAML setup
-    coordinator = WS1500LegacyCoordinator(hass, host, scan_interval)
-    await coordinator.async_config_entry_first_refresh()
+    host: str = config[CONF_HOST]
+    scan_interval: int = config.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL)
 
-    sensors = []
+    # Use shared coordinator for YAML setup to avoid duplicates
+    hass.data.setdefault(DOMAIN, {})
+    yaml_key = f"yaml_{host}"
+    lock_key = f"yaml_lock_{host}"
+
+    # Create a lock for this host if it doesn't exist
+    if lock_key not in hass.data[DOMAIN]:
+        hass.data[DOMAIN][lock_key] = asyncio.Lock()
+
+    # Use the lock to prevent race conditions when multiple platforms initialize
+    async with hass.data[DOMAIN][lock_key]:
+        if yaml_key not in hass.data[DOMAIN]:
+            # Create coordinator only if not already created by another platform
+            coordinator = WS1500LegacyCoordinator(hass, host, scan_interval)
+            await coordinator.async_config_entry_first_refresh()
+            hass.data[DOMAIN][yaml_key] = coordinator
+        else:
+            coordinator = hass.data[DOMAIN][yaml_key]
+
+    sensors: list[SensorEntity] = []
+
     # Add weather data sensors
     for description in SENSOR_DESCRIPTIONS:
         sensors.append(WS1500LegacySensor(coordinator, description))
@@ -285,14 +329,23 @@ async def async_setup_platform(hass, config, async_add_entities, discovery_info=
     for description in INFO_SENSOR_DESCRIPTIONS:
         sensors.append(WS1500LegacyInfoSensor(coordinator, description))
 
+    # Add smart calculated sensors
+    for description in SMART_SENSOR_DESCRIPTIONS:
+        sensors.append(WS1500LastRainSensor(coordinator, description))
+
     async_add_entities(sensors)
 
 
-async def async_setup_entry(hass, config_entry, async_add_entities):
+async def async_setup_entry(
+    hass: HomeAssistant,
+    config_entry: ConfigEntry,
+    async_add_entities: AddEntitiesCallback,
+) -> None:
     """Set up WS1500 Legacy platform via UI."""
-    coordinator = hass.data[DOMAIN][config_entry.entry_id]
+    coordinator: WS1500LegacyCoordinator = hass.data[DOMAIN][config_entry.entry_id]
 
-    sensors = []
+    sensors: list[SensorEntity] = []
+
     # Add weather data sensors
     for description in SENSOR_DESCRIPTIONS:
         sensors.append(WS1500LegacySensor(coordinator, description))
@@ -301,10 +354,14 @@ async def async_setup_entry(hass, config_entry, async_add_entities):
     for description in INFO_SENSOR_DESCRIPTIONS:
         sensors.append(WS1500LegacyInfoSensor(coordinator, description))
 
+    # Add smart calculated sensors
+    for description in SMART_SENSOR_DESCRIPTIONS:
+        sensors.append(WS1500LastRainSensor(coordinator, description))
+
     async_add_entities(sensors)
 
 
-class WS1500LegacySensor(CoordinatorEntity, SensorEntity):
+class WS1500LegacySensor(CoordinatorEntity[WS1500LegacyCoordinator], SensorEntity):
     """Define a WS1500 weather sensor."""
 
     def __init__(
@@ -315,28 +372,26 @@ class WS1500LegacySensor(CoordinatorEntity, SensorEntity):
         """Initialize the sensor."""
         super().__init__(coordinator)
         self.entity_description = description
-        self._attr_name = f"WS1500 {description.name}"
-        self._attr_unique_id = f"ws1500_legacy_{description.key}"
+        self._attr_name = f"{SENSOR_NAME_PREFIX} {description.name}"
+        self._attr_unique_id = f"{ENTITY_ID_PREFIX}_{description.key}"
 
     @property
-    def available(self):
+    def available(self) -> bool:
         """Return True if entity is available."""
-        # Entity is available if it has a non-None value
-        value = self.native_value
-        return value is not None
+        return self.native_value is not None
 
     @property
-    def native_value(self):
+    def native_value(self) -> Any:
         """Return the native value of the sensor."""
         return self.coordinator.data["sensors"].get(self.entity_description.key)
 
     @property
-    def device_info(self):
+    def device_info(self) -> dict[str, Any]:
         """Return device information."""
         return self.coordinator.get_device_info()
 
 
-class WS1500LegacyInfoSensor(CoordinatorEntity, SensorEntity):
+class WS1500LegacyInfoSensor(CoordinatorEntity[WS1500LegacyCoordinator], SensorEntity):
     """Define a WS1500 info sensor."""
 
     def __init__(
@@ -347,18 +402,16 @@ class WS1500LegacyInfoSensor(CoordinatorEntity, SensorEntity):
         """Initialize the sensor."""
         super().__init__(coordinator)
         self.entity_description = description
-        self._attr_name = f"WS1500 {description.name}"
-        self._attr_unique_id = f"ws1500_legacy_{description.key}"
+        self._attr_name = f"{SENSOR_NAME_PREFIX} {description.name}"
+        self._attr_unique_id = f"{ENTITY_ID_PREFIX}_{description.key}"
 
     @property
-    def available(self):
+    def available(self) -> bool:
         """Return True if entity is available."""
-        # Entity is available if it has a non-None value
-        value = self.native_value
-        return value is not None
+        return self.native_value is not None
 
     @property
-    def native_value(self):
+    def native_value(self) -> Any:
         """Return the native value of the sensor."""
         # Check if this sensor is in the sensors data (including info sensors from livedata)
         value = self.coordinator.data["sensors"].get(self.entity_description.key)
@@ -368,6 +421,100 @@ class WS1500LegacyInfoSensor(CoordinatorEntity, SensorEntity):
         return self.coordinator.data["info"].get(self.entity_description.key)
 
     @property
-    def device_info(self):
+    def device_info(self) -> dict[str, Any]:
+        """Return device information."""
+        return self.coordinator.get_device_info()
+
+
+class WS1500LastRainSensor(CoordinatorEntity[WS1500LegacyCoordinator], RestoreSensor):
+    """Smart sensor that tracks when it last rained based on daily rain changes."""
+
+    _last_rain_date: datetime | None = None
+
+    def __init__(
+        self,
+        coordinator: WS1500LegacyCoordinator,
+        description: SensorEntityDescription,
+    ) -> None:
+        """Initialize the sensor."""
+        super().__init__(coordinator)
+        self.entity_description = description
+        self._attr_name = f"{SENSOR_NAME_PREFIX} {description.name}"
+        self._attr_unique_id = f"{ENTITY_ID_PREFIX}_{description.key}"
+
+    async def async_added_to_hass(self) -> None:
+        """Restore last known state."""
+        await super().async_added_to_hass()
+
+        # Restore the last known rain date
+        restored_data = await self.async_get_last_sensor_data()
+        if restored_data and restored_data.native_value:
+            restored_value = restored_data.native_value
+            # Handle both datetime objects and ISO format strings
+            if isinstance(restored_value, datetime):
+                self._last_rain_date = dt_util.as_local(restored_value)
+            elif isinstance(restored_value, str):
+                parsed = dt_util.parse_datetime(restored_value)
+                if parsed:
+                    self._last_rain_date = dt_util.as_local(parsed)
+            _LOGGER.info("Restored last rain date: %s", self._last_rain_date)
+
+    @callback
+    def _handle_coordinator_update(self) -> None:
+        """Handle updated data from the coordinator."""
+        # Check for rain today and update last rain date
+        current_daily_rain = self.coordinator.data["sensors"].get("daily_rain")
+
+        if current_daily_rain is not None and current_daily_rain > 0:
+            # It's raining today, update the last rain date to today
+            today = dt_util.now().replace(hour=0, minute=0, second=0, microsecond=0)
+            if self._last_rain_date is None or self._last_rain_date.date() != today.date():
+                self._last_rain_date = today
+                _LOGGER.info("Rain detected today! Updated last rain date to: %s", today)
+
+        # Call parent to trigger state update
+        super()._handle_coordinator_update()
+
+    @property
+    def available(self) -> bool:
+        """Return True if entity is available."""
+        return True  # Always available, even if no rain detected yet
+
+    @property
+    def native_value(self) -> datetime | None:
+        """Return the last rain date."""
+        return self._last_rain_date
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        """Return additional state attributes."""
+        daily_rain = self.coordinator.data["sensors"].get("daily_rain", 0)
+
+        attrs: dict[str, Any] = {
+            "daily_rain_mm": daily_rain,
+            "detection_method": "daily_rain_sensor",
+        }
+
+        if self._last_rain_date:
+            now = dt_util.now()
+            days_since = (now.date() - self._last_rain_date.date()).days
+            attrs["days_since_rain"] = days_since
+
+            if days_since == 0:
+                attrs["rain_status"] = "raining_today"
+            elif days_since == 1:
+                attrs["rain_status"] = "rained_yesterday"
+            elif days_since <= 7:
+                attrs["rain_status"] = "recent_rain"
+            else:
+                attrs["rain_status"] = "no_recent_rain"
+        else:
+            attrs["rain_status"] = "no_rain_detected"
+            attrs["days_since_rain"] = None
+
+        return attrs
+
+    @property
+    def device_info(self) -> dict[str, Any]:
         """Return device information."""
         return self.coordinator.get_device_info()
