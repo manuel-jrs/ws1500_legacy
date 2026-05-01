@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import asyncio
-import logging
 from typing import Any
 
 from homeassistant.components.sensor import (
@@ -12,14 +11,13 @@ from homeassistant.components.sensor import (
     SensorEntityDescription,
     SensorStateClass,
 )
-from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import (
     CONF_HOST,
     CONF_SCAN_INTERVAL,
     PERCENTAGE,
+    UnitOfPressure,
     UnitOfSpeed,
     UnitOfTemperature,
-    UnitOfPressure,
 )
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity import EntityCategory
@@ -27,6 +25,7 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.typing import ConfigType, DiscoveryInfoType
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
+from . import WS1500ConfigEntry
 from .const import (
     DEFAULT_SCAN_INTERVAL,
     DOMAIN,
@@ -35,10 +34,8 @@ from .const import (
 )
 from .coordinator import WS1500LegacyCoordinator
 
-_LOGGER = logging.getLogger(__name__)
-
 # Weather sensor descriptions following Home Assistant standards
-SENSOR_DESCRIPTIONS = (
+SENSOR_DESCRIPTIONS: tuple[SensorEntityDescription, ...] = (
     SensorEntityDescription(
         key="wind_direction",
         name="Wind Direction",
@@ -131,6 +128,7 @@ SENSOR_DESCRIPTIONS = (
         key="uvi",
         name="UV Index",
         native_unit_of_measurement="UVI",
+        device_class=SensorDeviceClass.UV_INDEX,
         state_class=SensorStateClass.MEASUREMENT,
         icon="mdi:weather-sunny-alert",
     ),
@@ -201,7 +199,7 @@ SENSOR_DESCRIPTIONS = (
 )
 
 # Info sensor descriptions (these don't have device classes or state classes)
-INFO_SENSOR_DESCRIPTIONS = (
+INFO_SENSOR_DESCRIPTIONS: tuple[SensorEntityDescription, ...] = (
     SensorEntityDescription(
         key="timezone",
         name="Time Zone",
@@ -277,67 +275,55 @@ INFO_SENSOR_DESCRIPTIONS = (
 )
 
 
+def _build_entities(coordinator: WS1500LegacyCoordinator) -> list[SensorEntity]:
+    """Build the full set of sensor entities for a coordinator."""
+    entities: list[SensorEntity] = [
+        WS1500LegacySensor(coordinator, description)
+        for description in SENSOR_DESCRIPTIONS
+    ]
+    entities.extend(
+        WS1500LegacyInfoSensor(coordinator, description)
+        for description in INFO_SENSOR_DESCRIPTIONS
+    )
+    return entities
+
+
 async def async_setup_platform(
     hass: HomeAssistant,
     config: ConfigType,
     async_add_entities: AddEntitiesCallback,
     discovery_info: DiscoveryInfoType | None = None,
 ) -> None:
-    """Set up WS1500 Legacy platform via YAML."""
+    """Set up WS1500 Legacy platform via YAML (legacy path)."""
     host: str = config[CONF_HOST]
     scan_interval: int = config.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL)
 
-    # Use shared coordinator for YAML setup to avoid duplicates
+    # YAML path shares a coordinator across platforms via hass.data[DOMAIN].
     hass.data.setdefault(DOMAIN, {})
     yaml_key = f"yaml_{host}"
     lock_key = f"yaml_lock_{host}"
 
-    # Create a lock for this host if it doesn't exist
     if lock_key not in hass.data[DOMAIN]:
         hass.data[DOMAIN][lock_key] = asyncio.Lock()
 
-    # Use the lock to prevent race conditions when multiple platforms initialize
     async with hass.data[DOMAIN][lock_key]:
         if yaml_key not in hass.data[DOMAIN]:
-            # Create coordinator only if not already created by another platform
             coordinator = WS1500LegacyCoordinator(hass, host, scan_interval)
             await coordinator.async_config_entry_first_refresh()
             hass.data[DOMAIN][yaml_key] = coordinator
         else:
             coordinator = hass.data[DOMAIN][yaml_key]
 
-    sensors: list[SensorEntity] = []
-
-    # Add weather data sensors
-    for description in SENSOR_DESCRIPTIONS:
-        sensors.append(WS1500LegacySensor(coordinator, description))
-
-    # Add info sensors
-    for description in INFO_SENSOR_DESCRIPTIONS:
-        sensors.append(WS1500LegacyInfoSensor(coordinator, description))
-
-    async_add_entities(sensors)
+    async_add_entities(_build_entities(coordinator))
 
 
 async def async_setup_entry(
     hass: HomeAssistant,
-    config_entry: ConfigEntry,
+    entry: WS1500ConfigEntry,
     async_add_entities: AddEntitiesCallback,
 ) -> None:
-    """Set up WS1500 Legacy platform via UI."""
-    coordinator: WS1500LegacyCoordinator = hass.data[DOMAIN][config_entry.entry_id]
-
-    sensors: list[SensorEntity] = []
-
-    # Add weather data sensors
-    for description in SENSOR_DESCRIPTIONS:
-        sensors.append(WS1500LegacySensor(coordinator, description))
-
-    # Add info sensors
-    for description in INFO_SENSOR_DESCRIPTIONS:
-        sensors.append(WS1500LegacyInfoSensor(coordinator, description))
-
-    async_add_entities(sensors)
+    """Set up WS1500 Legacy sensors via UI."""
+    async_add_entities(_build_entities(entry.runtime_data))
 
 
 class WS1500LegacySensor(CoordinatorEntity[WS1500LegacyCoordinator], SensorEntity):
@@ -356,8 +342,12 @@ class WS1500LegacySensor(CoordinatorEntity[WS1500LegacyCoordinator], SensorEntit
 
     @property
     def available(self) -> bool:
-        """Return True if entity is available."""
-        return self.native_value is not None
+        """Return True only if the last poll succeeded and the value is set."""
+        return (
+            super().available
+            and self.coordinator.data["sensors"].get(self.entity_description.key)
+            is not None
+        )
 
     @property
     def native_value(self) -> Any:
@@ -371,7 +361,7 @@ class WS1500LegacySensor(CoordinatorEntity[WS1500LegacyCoordinator], SensorEntit
 
 
 class WS1500LegacyInfoSensor(CoordinatorEntity[WS1500LegacyCoordinator], SensorEntity):
-    """Define a WS1500 info sensor."""
+    """Define a WS1500 info sensor (diagnostic, sourced from station settings)."""
 
     def __init__(
         self,
@@ -386,18 +376,20 @@ class WS1500LegacyInfoSensor(CoordinatorEntity[WS1500LegacyCoordinator], SensorE
 
     @property
     def available(self) -> bool:
-        """Return True if entity is available."""
-        return self.native_value is not None
+        """Return True only if the last poll succeeded and the value is set."""
+        return super().available and self._read_value() is not None
+
+    def _read_value(self) -> Any:
+        """Look up the value in either the sensors or info bucket."""
+        value = self.coordinator.data["sensors"].get(self.entity_description.key)
+        if value is not None:
+            return value
+        return self.coordinator.data["info"].get(self.entity_description.key)
 
     @property
     def native_value(self) -> Any:
         """Return the native value of the sensor."""
-        # Check if this sensor is in the sensors data (including info sensors from livedata)
-        value = self.coordinator.data["sensors"].get(self.entity_description.key)
-        if value is not None:
-            return value
-        # If not found in sensors, check in info data
-        return self.coordinator.data["info"].get(self.entity_description.key)
+        return self._read_value()
 
     @property
     def device_info(self) -> dict[str, Any]:
