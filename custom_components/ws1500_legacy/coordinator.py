@@ -12,6 +12,7 @@ import aiohttp
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
+from homeassistant.util import dt as dt_util
 
 from .const import (
     CACHE_DURATION,
@@ -37,6 +38,7 @@ from .const import (
     SOLAR_SENSORS,
     SOLAR_UNIT_PATTERN,
     SOLAR_UNITS,
+    STALE_CURRTIME_THRESHOLD_SECONDS,
     STATION_ENDPOINT,
     TEMP_UNIT_PATTERN,
     TEMP_UNITS,
@@ -78,6 +80,17 @@ class WS1500LegacyCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self._station_cache: dict[str, Any] = {}
         self._station_cache_time: datetime | None = None
 
+        # Stale-data detection: track when the device's CurrTime last advanced.
+        # If the receiver freezes (HTTP 200 with identical HTML forever),
+        # CurrTime stops moving while the wall-clock keeps going. Threshold
+        # scales with the configured scan interval so a slow polling cadence
+        # cannot trigger a false positive on the first repeated reading.
+        self._last_curr_time: str | None = None
+        self._last_curr_time_seen_at: datetime | None = None
+        self._stale_threshold_seconds: int = max(
+            STALE_CURRTIME_THRESHOLD_SECONDS, 3 * scan_interval
+        )
+
         # Compiled regex patterns for better performance
         self._compiled_patterns: dict[str, re.Pattern[str]] = {
             key: re.compile(pattern)
@@ -113,6 +126,10 @@ class WS1500LegacyCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             # Fetch live data (weather sensors)
             raw_sensor_data = await self._fetch_sensor_data()
 
+            # Detect frozen-receiver state where the device returns HTTP 200
+            # with identical HTML forever. Raises UpdateFailed when triggered.
+            self._check_curr_time_freshness(raw_sensor_data.get("current_time"))
+
             # Convert sensor data to metric units based on device configuration
             sensor_data = self._convert_units(raw_sensor_data, station_data)
 
@@ -142,6 +159,37 @@ class WS1500LegacyCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             raise UpdateFailed(
                 f"Connection error to {self.host}: {err}"
             ) from err
+
+    def _check_curr_time_freshness(self, curr_time: str | None) -> None:
+        """Raise UpdateFailed if the device's CurrTime has not advanced.
+
+        The WS1500 returns CurrTime at HH:MM granularity (e.g. "17:45 5/1/2026").
+        We treat the value as opaque — when it changes, we record the wall-clock
+        moment we first saw the new value; when it stays the same past the
+        threshold, the receiver is frozen even though HTTP keeps succeeding.
+        """
+        if not curr_time:
+            # Without a timestamp we cannot judge freshness; skip silently.
+            return
+
+        now = dt_util.utcnow()
+
+        if curr_time != self._last_curr_time:
+            self._last_curr_time = curr_time
+            self._last_curr_time_seen_at = now
+            return
+
+        # _last_curr_time_seen_at is guaranteed to be set here: it is paired
+        # with _last_curr_time above, and the only way to reach this branch is
+        # for curr_time to equal a previously-seen non-None _last_curr_time.
+        assert self._last_curr_time_seen_at is not None
+        stale_for = (now - self._last_curr_time_seen_at).total_seconds()
+        if stale_for >= self._stale_threshold_seconds:
+            raise UpdateFailed(
+                f"Device at {self.host} returned HTTP 200 but CurrTime "
+                f"({curr_time}) has not advanced in {stale_for:.0f}s — "
+                "the receiver appears frozen"
+            )
 
     def _convert_units(
         self,

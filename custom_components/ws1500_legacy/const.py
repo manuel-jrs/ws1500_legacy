@@ -6,7 +6,6 @@ from typing import Final
 # Domain and Integration Info
 # =============================================================================
 DOMAIN: Final = "ws1500_legacy"
-INTEGRATION_NAME: Final = "Ambient Weather WS1500 Legacy"
 
 # =============================================================================
 # Device Information
@@ -36,7 +35,15 @@ REBOOT_ENDPOINT: Final = "/msgreboot.htm"
 # Cache Settings
 # =============================================================================
 CACHE_DURATION: Final = 30  # seconds to cache station settings
-DATA_CACHE_DURATION: Final = 5  # seconds to cache sensor data
+
+# =============================================================================
+# Stale-Data Detection
+# =============================================================================
+# Minimum time CurrTime must remain unchanged before we declare the receiver
+# frozen. The device reports CurrTime at HH:MM granularity, so the threshold
+# must comfortably exceed one minute. 180s tolerates slow polls and minute
+# rollover without false positives.
+STALE_CURRTIME_THRESHOLD_SECONDS: Final = 180
 
 # =============================================================================
 # Sensor Entity Prefix
@@ -105,12 +112,18 @@ def convert_pressure(value: float, from_unit: str) -> float:
 
 
 def convert_solar(value: float, from_unit: str) -> float:
-    """Convert solar radiation to W/m²."""
+    """Convert solar radiation to W/m².
+
+    Lux→W/m² uses the rough sunlight-spectrum factor of 0.0079; this is an
+    approximation since the lumens-to-watts ratio depends on the source
+    spectrum, but it matches the WS1500 device's own internal conversion.
+    """
     if value is None:
         return None
     conversions = {
-        "lux": lambda v: v * 0.0079,  # Approximate conversion
-        "fc": lambda v: v * 0.0929 * 0.0079,  # fc -> lux -> W/m²
+        "lux": lambda v: v * 0.0079,
+        # 1 footcandle = 10.764 lux; then lux→W/m² uses 0.0079.
+        "fc": lambda v: v * 10.764 * 0.0079,
         "W/m²": lambda v: v,
     }
     converter = conversions.get(from_unit, lambda v: v)
@@ -134,18 +147,18 @@ SOLAR_SENSORS: Final = frozenset({"solar_rad"})
 # =============================================================================
 SENSOR_DATA_MAPPING: Final = {
     # Wind sensors (always available)
-    "wind_direction": 'name="windir"[^>]*value="([0-9]+)"',
+    "wind_direction": 'name="windir"[^>]*value="([-0-9\\.]+)"',
     "wind_speed": 'name="avgwind"[^>]*value="([-0-9\\.]+)"',
     "wind_gust": 'name="gustspeed"[^>]*value="([-0-9\\.]+)"',
     "max_daily_gust": 'name="dailygust"[^>]*value="([-0-9\\.]+)"',
 
     # Outdoor temperature and humidity (always available)
     "out_temp": 'name="outTemp"[^>]*value="([-0-9\\.]+)"',
-    "out_humidity": 'name="outHumi"[^>]*value="([0-9]+)"',
+    "out_humidity": 'name="outHumi"[^>]*value="([-0-9\\.]+)"',
 
     # Solar and UV (available on most WS1500)
     "solar_rad": 'name="solarrad"[^>]*value="([-0-9\\.]+)"',
-    "uvi": 'name="uvi"[^>]*value="([0-9]+)"',
+    "uvi": 'name="uvi"[^>]*value="([-0-9\\.]+)"',
 
     # Rain sensors (available on most WS1500)
     "hourly_rain": 'name="rainofhourly"[^>]*value="([-0-9\\.]+)"',
@@ -157,7 +170,7 @@ SENSOR_DATA_MAPPING: Final = {
 
     # Optional sensors (may not be installed on all devices)
     "in_temp": 'name="inTemp"[^>]*value="([-0-9\\.]+)"',
-    "in_humidity": 'name="inHumi"[^>]*value="([^"]*)"',
+    "in_humidity": 'name="inHumi"[^>]*value="([-0-9\\.]+)"',
     "abs_pressure": 'name="AbsPress"[^>]*value="([-0-9\\.]+)"',
     "rel_pressure": 'name="RelPress"[^>]*value="([-0-9\\.]+)"',
     "pm25_indoor": 'name="pm25in"[^>]*value="([-0-9\\.]+)"',
