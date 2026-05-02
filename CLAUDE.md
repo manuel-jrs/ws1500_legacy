@@ -55,6 +55,7 @@ Both setup paths are supported. The YAML path (`async_setup_platform` in `sensor
 - **Wind direction** uses `SensorStateClass.MEASUREMENT_ANGLE` (not `MEASUREMENT`). This is intentional and documented as a fix in `0.6.0`.
 - **`lastrain` does not exist** on real WS1500 hardware. The "last rain date" sensor was removed in 0.6.0 after device validation. Don't reintroduce it from `SMART_SENSORS_README.md` (which documents the removed feature) without re-verifying against a live device.
 - New sensors: add the regex to `SENSOR_DATA_MAPPING` in `const.py`, add the entity to the relevant unit-conversion `frozenset` if needed, and append a `SensorEntityDescription` to `SENSOR_DESCRIPTIONS` in `sensor.py`. The coordinator picks it up automatically.
+- **Verify any `SensorDeviceClass.*`, `BinarySensorDeviceClass.*`, `ButtonDeviceClass.*` member against the live HA core source** before using it — web search results have been wrong about which members exist (e.g. `SensorDeviceClass.UV_INDEX` does NOT exist; UV index sensors should omit `device_class`). Quick check: `gh api repos/home-assistant/core/contents/homeassistant/components/sensor/const.py --jq '.content' | base64 -d | grep '^\s\+MEMBER_NAME\s*='`.
 
 ## Common tasks
 
