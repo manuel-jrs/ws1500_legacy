@@ -125,10 +125,12 @@ SENSOR_DESCRIPTIONS: tuple[SensorEntityDescription, ...] = (
         icon="mdi:solar-power",
     ),
     SensorEntityDescription(
+        # UV index has no matching SensorDeviceClass in HA — leave it off and
+        # let the unit/state_class drive the UI. Don't use IRRADIANCE here:
+        # that is W/m² semantically, not a dimensionless index.
         key="uvi",
         name="UV Index",
         native_unit_of_measurement="UVI",
-        device_class=SensorDeviceClass.UV_INDEX,
         state_class=SensorStateClass.MEASUREMENT,
         icon="mdi:weather-sunny-alert",
     ),

@@ -17,8 +17,8 @@ All notable changes to this project will be documented in this file.
 - `OptionsFlow` no longer declares `__init__`; relies on the framework-assigned `self.config_entry`. The legacy pattern was removed in HA 2025.12.
 - `FlowResult` import replaced by `ConfigFlowResult` from `homeassistant.config_entries`.
 - Config flow validation now reuses the shared `aiohttp` session via `async_get_clientsession`.
-- Added `SensorDeviceClass.UV_INDEX` to the UVI sensor.
-- `manifest.json` modernized: added `integration_type: device`, `loggers`, `issue_tracker`, `quality_scale: bronze`.
+- The UVI sensor remains without a `device_class`. `SensorDeviceClass.UV_INDEX` does not exist in HA core (verified against `homeassistant/components/sensor/const.py` on the `dev` branch); using it raises `AttributeError` at import time. `IRRADIANCE` would be semantically wrong (W/m² vs a dimensionless index), so the sensor relies on `state_class=MEASUREMENT` and the `"UVI"` unit alone.
+- `manifest.json` modernized: added `integration_type: device`, `loggers`, `issue_tracker`. `quality_scale` deliberately omitted — see `CHANGELOG.md` for the honest Bronze gap analysis.
 - Reboot button now extends `CoordinatorEntity` for proper coordinator lifecycle binding; success notification removed (only errors notify).
 
 ### Cleanup
